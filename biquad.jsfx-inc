@@ -1,0 +1,138 @@
+// Info: https://www.w3.org/TR/audio-eq-cookbook/
+
+@init
+
+// -------------------------
+// Utilities
+// -------------------------
+
+TAU = 6.2831;
+NYQUIST = srate / 2.0;
+
+function sinh(x) (
+	(exp(x) - exp(-x)) / 2.0
+);
+
+function asinh(x) (
+	exp(x + sqrt(x^2 + 1))
+);
+
+// -------------------------
+// Coefficient functions
+// -------------------------
+
+function lpf(freq, q_fac) local(omega, cos_omega, alpha, a0) (
+	omega = TAU * (freq / srate);
+	cos_omega = cos(omega);
+	alpha = sin(omega) / (2.0 * q_fac);
+
+	a0 = 1.0 + alpha;
+	this.a1 = (-2.0 * cos_omega) / a0;
+	this.a2 = (1.0 - alpha) / a0;
+
+	this.b0 = ((1.0 - cos_omega) / 2.0) / a0;
+	this.b1 = (1.0 - cos_omega) / a0;
+	this.b2 = ((1.0 - cos_omega) / 2.0) / a0;
+);
+
+function hpf(freq, q_fac) local(omega, cos_omega, alpha, a0) (
+	omega = TAU * (freq / srate);
+	cos_omega = cos(omega);
+	alpha = sin(omega) / (2.0 * q_fac);
+
+	a0 = 1.0 + alpha;
+	this.a1 = (-2.0 * cos_omega) / a0;
+	this.a2 = (1.0 - alpha) / a0;
+
+	this.b0 = ((1.0 + cos_omega) / 2.0) / a0;
+	this.b1 = -(1.0 + cos_omega) / a0;
+	this.b2 = ((1.0 + cos_omega) / 2.0) / a0;
+);
+
+function bpf(freq, q_fac) local(omega, cos_omega, alpha, a0) (
+	omega = TAU * (freq / srate);
+	cos_omega = cos(omega);
+
+	alpha = sin(omega) / (2.0 * q_fac);
+
+	a0 = 1.0 + alpha;
+	this.a1 = -(2 * cos_omega) / a0;
+	this.a2 = (1.0 - alpha) / a0;
+
+	this.b0 = alpha / a0;
+	this.b1 = 0.0;
+	this.b2 = -this.b0;
+);
+
+function notch(freq, q_fac) local(omega, cos_omega, alpha, a0) (
+	omega = TAU * (freq / srate);
+	cos_omega = cos(omega);
+	alpha = sin(omega) / (2.0 * q_fac);
+
+	a0 = 1.0 + alpha;
+	this.a1 = (-2 * cos_omega) / a0;
+	this.a2 = (1.0 - alpha) / a0;
+
+	this.b0 = 1.0 / a0;
+	this.b1 = (-2 * cos_omega) / a0;
+	this.b2 = this.b0;
+);
+
+function peak(freq, q_fac, gain) local(omega, cos_omega, alpha, big_a, a0) (
+	omega = TAU * (freq / srate);
+	cos_omega = cos(omega);
+	alpha = sin(omega) / (2.0 * q_fac);
+	big_a = exp(gain * (log(10) / 40.0));
+
+	a0 = 1.0 + (alpha / big_a);
+	this.a1 = (-2 * cos_omega) / a0;
+	this.a2 = (1.0 - (alpha / big_a)) / a0;
+
+	this.b0 = (1.0 + alpha * big_a) / a0;
+	this.b1 = (-2 * cos_omega) / a0;
+	this.b2 = (1.0 - alpha * big_a) / a0;
+);
+
+// -------------------------
+// Filter functions
+// -------------------------
+
+// https://www.dsprelated.com/freebooks/filters/Direct_Form_I.html
+function df1(x) local(y) (
+	y = x * this.coefficients.b0 + this.s1 + this.s3;
+	this.s1 = x * this.coefficients.b1 + this.s2;
+	this.s2 = x * this.coefficients.b2;
+	this.s3 = y * -this.coefficients.a1 + this.s4;
+	this.s4 = y * -this.coefficients.a2;
+	y
+);
+
+// https://www.dsprelated.com/freebooks/filters/Direct_Form_II.html
+function df2(x) local(y, v) (
+	v = x + this.s1;
+	y = v * this.coefficients.b0 + this.s3;
+	this.s1 = v * -this.coefficients.a1 + this.s2;
+	this.s2 = v * -this.coefficients.a2;
+	this.s3 = v * this.coefficients.b1 + this.s4;
+	this.s4 = v * this.coefficients.b2;
+	y
+);
+
+// https://www.dsprelated.com/freebooks/filters/Transposed_Direct_Forms.html
+function df1_transposed(x) local(y, v) (
+	v = x + this.s1;
+	y = v * this.coefficients.b0 + this.s3;
+	this.s1 = v * -this.coefficients.a1 + this.s2;
+	this.s2 = v * -this.coefficients.a2;
+	this.s3 = v * this.coefficients.b1 + this.s4;
+	this.s4 = v * this.coefficients.b2;
+	y
+);
+
+// https://www.dsprelated.com/freebooks/filters/Transposed_Direct_Forms.html
+function df2_transposed(x) local(y) (
+	y = x * this.coefficients.b0 + this.s1;
+	this.s1 = x * this.coefficients.b1 + y * -this.coefficients.a1 + this.s2;
+	this.s2 = x * this.coefficients.b2 + y * -this.coefficients.a2;
+	y
+);

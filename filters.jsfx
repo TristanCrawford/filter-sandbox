@@ -1,0 +1,73 @@
+author: Tristan Crawford <tristancrawford@proton.me>
+desc: Filter Sandbox
+
+slider1:frequency=1000<20,24000,0.1:log=700>Frequency (Hz)
+slider2:q_fac=0.71<0.1, 10.0, 0.1>Q
+slider3:peak_db=3<-12.0,12.0,0.1:log=0>Peak Gain (dB)
+slider4:filter_type=2<0,4,1{Lowpass,Hipass,Bandpass,Notch,Peak}>Filter Type
+slider5:transfer_fn=0<0,3,1{DF-I,DF-II,DF-I (Transposed),DF-II (Transposed)}>Transfer Function
+slider6:smooth_time=50.0<1.0, 60.0, 1.0>Smooth Time (ms)
+slider7:smooth_enabled=1<0,1,0{Off,On}>Parameter Smoothing
+
+import biquad.jsfx-inc
+
+@init
+
+smooth_coeff = exp(-TAU / (smooth_time * srate * 0.001));
+
+function smoothed(targ, curr) local(r) (
+		r = targ * (1.0 - smooth_coeff) + (curr * smooth_coeff);
+		r
+);
+
+function db_to_gain(db) ( 10 ^ (db * 0.05) );
+
+function update_filter(freq, q) (
+	filter_type === 0 // Lowpass
+	? this.coefficients.lpf(freq, q)
+	: filter_type === 1 // Hipass
+		? this.coefficients.hpf(freq, q)
+		: filter_type === 2 // Bandpass
+			? this.coefficients.bpf(freq, q)
+			: filter_type === 3 // Notch
+				? this.coefficients.notch(freq, q)
+				: this.coefficients.peak(freq, q, peak_db);
+);
+
+@slider
+(prev_smooth_time !== smooth_time) ? (
+	smooth_coeff = exp(-TAU / (smooth_time * srate * 0.001));
+	prev_smooth_time = smooth_time;
+);
+
+(
+	prev_filter_type !== filter_type ||
+	prev_transfer_fn !== transfer_fn ||
+	prev_peak_db !== peak_db ||
+	!smooth_enabled
+) ? (
+	filter_l.update_filter(frequency, q_fac);
+	filter_r.update_filter(frequency, q_fac);
+	prev_filter_type = filter_type;
+	prev_transfer_fn = transfer_fn;
+	prev_peak_db = peak_db;
+);
+
+@sample
+smooth_enabled ? (
+	smooth_freq = smoothed(frequency, smooth_freq);
+	smooth_q = smoothed(q_fac, smooth_q);
+
+	(smooth_freq != frequency || smooth_q != q_fac) ? (
+		filter_l.update_filter(smooth_freq, smooth_q);
+		filter_r.update_filter(smooth_freq, smooth_q);
+	);
+);
+
+transfer_fn == 0
+? ( spl0 = filter_l.df1(spl0); spl1 = filter_r.df1(spl1); )
+: transfer_fn == 1
+	? ( spl0 = filter_l.df2(spl0); spl1 = filter_r.df2(spl1); )
+	: transfer_fn == 2
+		? ( spl0 = filter_l.df1_transposed(spl0); spl1 = filter_r.df1_transposed(spl1); )
+		: ( spl0 = filter_l.df2_transposed(spl0); spl1 = filter_r.df2_transposed(spl1); );
